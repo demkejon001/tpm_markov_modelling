@@ -31,11 +31,7 @@ def train(model, dataloader, n_minitbatches):
     log_interval = 20
     losses = []
     image_losses = []
-    term_losses = []
-    rew_losses = []
     image_accs = []
-    term_accs = []
-    rew_accs = []
     while True:
         for data in dataloader:
             step += 1
@@ -46,24 +42,16 @@ def train(model, dataloader, n_minitbatches):
             results = model.training_step(s, a, r, t, ns, eval=eval)
 
             if step % log_interval == 0:
-                print(f"[{step}/{n_minitbatches}] loss: {results['loss']}, image_loss: {results['image_loss']}, term_loss: {results['termination_loss']}, rew_loss: {results['reward_loss']}, ")
+                print(f"[{step}/{n_minitbatches}] loss: {results['loss']}, image_loss: {results['image_loss']}")
                 losses.append(results['loss'])
                 image_losses.append(results['image_loss'])
-                term_losses.append(results['termination_loss'])
-                rew_losses.append(results['reward_loss'])
                 image_accs.append(results['image_acc'])
-                term_accs.append(results['termination_acc'])
-                rew_accs.append(results['reward_acc'])
 
             if step >= n_minitbatches:
                 fig, axes = plt.subplots(4, 2)
                 plot(axes[0, 0], losses, "Loss")
                 plot(axes[1, 0], image_losses, "ImageLoss")
                 plot(axes[1, 1], image_accs, "ImageAcc")
-                plot(axes[2, 0], term_losses, "TerminationLoss")
-                plot(axes[2, 1], term_accs, "TerminationAcc")
-                plot(axes[3, 0], rew_losses, "RewardLoss")
-                plot(axes[3, 1], rew_accs, "RewardAcc")
                 
                 plt.show()
                 return
@@ -108,7 +96,7 @@ def train_and_eval(model, train_dataloader, test_dataloader, n_minibatches, log_
                 append_metrics(results, eval=True)
 
             if step >= n_minibatches:
-                fig, axes = plt.subplots(4, 2)
+                fig, axes = plt.subplots(2, 2)
                 plot(axes[0, 0], losses, "Loss")
                 plot(axes[0, 1], image_accs, "AgentPosAcc")
                 plot(axes[1, 0], image_losses, "ImageLoss")
@@ -137,6 +125,6 @@ def get_dataloaders():
 if __name__=="__main__":
     model = AutoencodingWorldModel(lr=.001, weight_decay=0.00001, hidden_layers=[32, 64, 64], dropout=True, batch_norm=False).to(device)
     train_dataloader, test_dataloader = get_dataloaders()
-    train_and_eval(model, train_dataloader, test_dataloader, n_minibatches=500, log_interval=25)
+    train_and_eval(model, train_dataloader, test_dataloader, n_minibatches=5000, log_interval=25)
     torch.save(model.state_dict(), f"data/models/autoencoding.ckpt")
     
