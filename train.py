@@ -22,15 +22,15 @@ def preprocess(s, a, r, t, ns):
     return s, a, r, t, ns
 
 
-def train(model, dataloader, n_minitbatches):
+def train(model, dataloader, n_minibatches, log_interval=25):
     def plot(ax, loss_data, title):
-        ax.plot(range(0, n_minitbatches, log_interval), loss_data)
+        ax.plot(range(0, n_minibatches, log_interval), loss_data)
         ax.set_title(title)
 
     step = 0
-    log_interval = 20
     losses = []
     image_losses = []
+    agent_pos_accs = []
     image_accs = []
     while True:
         for data in dataloader:
@@ -42,14 +42,16 @@ def train(model, dataloader, n_minitbatches):
             results = model.training_step(s, a, r, t, ns, eval=eval)
 
             if step % log_interval == 0:
-                print(f"[{step}/{n_minitbatches}] loss: {results['loss']}, image_loss: {results['image_loss']}")
+                print(f"[{step}/{n_minibatches}] loss: {results['loss']:.4f}, acc: {results['image_acc']} , agent pos acc: {results['agent_pos_acc']}")
                 losses.append(results['loss'])
-                image_losses.append(results['image_loss'])
+                image_losses.append(results['state_reconstruction_loss'])
+                agent_pos_accs.append(results["agent_pos_acc"])
                 image_accs.append(results['image_acc'])
 
-            if step >= n_minitbatches:
+            if step >= n_minibatches:
                 fig, axes = plt.subplots(4, 2)
                 plot(axes[0, 0], losses, "Loss")
+                plot(axes[0, 1], agent_pos_accs, "AgentPosAcc")
                 plot(axes[1, 0], image_losses, "ImageLoss")
                 plot(axes[1, 1], image_accs, "ImageAcc")
                 
@@ -92,13 +94,13 @@ def train_and_eval(model, train_dataloader, test_dataloader, n_minibatches, log_
                 s, a, r, t, ns = data
                 s, a, r, t, ns = preprocess(s, a, r, t, ns)
                 results = model.eval_step(s, a, r, t, ns)
-                print(f"[{step}/{n_minibatches}] loss: {results['loss']:.4f}, ")
+                print(f"[{step}/{n_minibatches}] loss: {results['loss']:.4f}, acc: {results['image_acc']} , agent pos acc: {results['agent_pos_acc']}")
                 append_metrics(results, eval=True)
 
             if step >= n_minibatches:
                 fig, axes = plt.subplots(2, 2)
                 plot(axes[0, 0], losses, "Loss")
-                plot(axes[0, 1], image_accs, "AgentPosAcc")
+                plot(axes[0, 1], agent_pos_accs, "AgentPosAcc")
                 plot(axes[1, 0], image_losses, "ImageLoss")
                 plot(axes[1, 1], image_accs, "ImageAcc")
                 handles, labels = axes[0,0].get_legend_handles_labels()
@@ -123,8 +125,10 @@ def get_dataloaders():
 
 
 if __name__=="__main__":
-    model = AutoencodingWorldModel(lr=.001, weight_decay=0.00001, hidden_layers=[32, 64, 64], dropout=True, batch_norm=False).to(device)
+    model = AutoencodingWorldModel(lr=.001, weight_decay=0.00001, 
+                                   hidden_layers=[16, 16, 32], transition_layers=[32],
+                                   dropout=False, batch_norm=False).to(device)
     train_dataloader, test_dataloader = get_dataloaders()
-    train_and_eval(model, train_dataloader, test_dataloader, n_minibatches=5000, log_interval=25)
-    torch.save(model.state_dict(), f"data/models/autoencoding.ckpt")
-    
+    train(model, train_dataloader, n_minibatches=5000, log_interval=50)
+    # train_and_eval(model, train_dataloader, test_dataloader, n_minibatches=5000, log_interval=100)
+    torch.save(model.state_dict(), f"data/models/{model.model_name}.ckpt")

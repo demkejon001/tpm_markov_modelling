@@ -105,21 +105,18 @@ class AutoencodingWorldModel(nn.Module):
                 ConvTransposeLayer(self.obs_enc_dim, hidden_layers[1], kernel_size=3, batch_norm=batch_norm, dropout=dropout, dropout_p=conv_dropout_p), 
                 ConvTransposeLayer(hidden_layers[1], hidden_layers[0], kernel_size=3, batch_norm=batch_norm, dropout=dropout, dropout_p=conv_dropout_p), 
                 nn.ConvTranspose2d(hidden_layers[0], 3, kernel_size=3), 
-                nn.Tanh(),
             ]
         if len(hidden_layers) == 2:
             state_decoder = [
                 ConvTransposeLayer(self.obs_enc_dim, hidden_layers[0], kernel_size=5, batch_norm=batch_norm, dropout=dropout, dropout_p=conv_dropout_p), 
                 nn.ConvTranspose2d(hidden_layers[0], 3, kernel_size=3), 
-                nn.Tanh(),
             ]
         if len(hidden_layers) == 1:
             state_decoder = [
                 nn.ConvTranspose2d(self.obs_enc_dim, 3, kernel_size=7), 
-                nn.Tanh(),
             ]
             
-        return nn.Sequential(*state_decoder, nn.Tanh())
+        return nn.Sequential(*state_decoder, nn.Tanh()) # Use nn.Identity()?
         
     def forward(self, state, action):
         state_encoding = self.get_state_encoding(state)
@@ -149,7 +146,7 @@ class AutoencodingWorldModel(nn.Module):
         if not eval:
             self.optim.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.parameters(), 100)
+            torch.nn.utils.clip_grad_norm_(self.parameters(), 10)
             self.optim.step()
 
         results = {"loss": loss.item(), 
@@ -165,23 +162,23 @@ class AutoencodingWorldModel(nn.Module):
         return self.training_step(s, a, r, t, ns, eval=True)
 
     @torch.no_grad()
-    def obs_acc(pred_obs, true_obs, threshold=20):
+    def obs_acc(self, pred_obs, true_obs, threshold=30):
         def pp(data):
             return (data + .5) * 255
         B, C, H, W = pred_obs.shape
         obs_diff = torch.abs(pp(pred_obs) - pp(true_obs))
         obs_diff = obs_diff.sum(axis=1) < threshold
+        return torch.mean(obs_diff.float()).item()
     
     @torch.no_grad()
-    def agent_pos_acc(pred_obs, true_obs, threshold=20):
+    def agent_pos_acc(self, pred_obs, true_obs, threshold=20):
         def pp(data):
             rgb = (data + .5) * 255
             return torch.clamp(rgb[:, 2] - (rgb[:, 0] + rgb[:, 1]), 0, 255)
-        
         B, C, H, W = pred_obs.shape
         obs_diff = torch.abs(pp(pred_obs) - pp(true_obs))
         obs_diff = torch.clamp((obs_diff < threshold).sum(axis=(1, 2)) - H*W + 1, 0, 1)
-        return torch.mean(obs_diff.float())
+        return torch.mean(obs_diff.float()).item()
 
 
 class SeparatedAutoencodingWorldModel(AutoencodingWorldModel):
