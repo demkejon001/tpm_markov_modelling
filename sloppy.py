@@ -24,16 +24,20 @@ def eval_model(world_model, dataloader):
     return results["loss"], results["agent_pos_acc"], results["image_acc"] 
 
 
-def save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict):
+def save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict, current_indices):
     param_norm = float(torch.linalg.norm(flat_params).cpu().numpy())
     state_dict = recover_flattened(flat_params, flat_param_dict["indices"], flat_param_dict["names"], world_model)
     world_model.load_state_dict(state_dict)
     loss, agent_pos_acc, image_acc = eval_model(world_model, dataloader)
+    filtered_parametric_uncertainty = [parametric_uncertainty[i] for i in current_indices]
     
     results.append({"n_eff_params": n_eff_params, "param_norm": param_norm, "step": current_step,
-                    "param_uncertainty_mean": np.mean(parametric_uncertainty), 
-                    "param_uncertainty_std": np.std(parametric_uncertainty),
-                    "param_uncertainty_median": np.median(parametric_uncertainty),
+                    "param_uncertainty_mean": np.mean(filtered_parametric_uncertainty), 
+                    "param_uncertainty_std": np.std(filtered_parametric_uncertainty),
+                    "param_uncertainty_median": np.median(filtered_parametric_uncertainty),
+                    "log_param_uncertainty_mean": np.mean(np.log10(filtered_parametric_uncertainty)), 
+                    "log_param_uncertainty_std": np.std(np.log10(filtered_parametric_uncertainty)),
+                    "log_param_uncertainty_median": np.median(np.log10(filtered_parametric_uncertainty)),
         "loss": loss, "agent_pos_acc": agent_pos_acc, "image_acc": image_acc})
 
 
@@ -45,23 +49,25 @@ def reduced_sloppy_model_analysis(original_model: AutoencodingWorldModel, datalo
     
     flat_param_dict = flatten_params(world_model)
     flat_params = flat_param_dict["params"]
+    current_indices = set(range(len(flat_params)))
 
     results = []
     
     # Full Model
     n_eff_params = len(flat_params)
     current_step = 0
-    save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict)
+    save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict, current_indices)
     
     # Full Model with tiny weights set to zero
-    set_to_zero = (torch.abs(flat_params) <= 1e-10)
+    set_to_zero = torch.arange(len(flat_params)).to(device)[(torch.abs(flat_params) <= 1e-10).squeeze()]
     flat_params[set_to_zero] = 0
-    n_initial_zero_params = torch.sum(set_to_zero).item()
+    n_initial_zero_params = len(set_to_zero)
 
     n_eff_params -= n_initial_zero_params
     parametric_uncertainty[set_to_zero.squeeze().cpu().numpy()] = (np.max(parametric_uncertainty)+1e-10 if remove_most_sloppy else 0)
+    current_indices = current_indices - set(set_to_zero.squeeze().cpu().numpy())
     current_step = n_initial_zero_params
-    save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict)
+    save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict, current_indices)
     
     # Reducing model
     sorted_parameter_indices = (np.argsort(parametric_uncertainty) if remove_most_sloppy else np.argsort(-parametric_uncertainty))
@@ -70,10 +76,11 @@ def reduced_sloppy_model_analysis(original_model: AutoencodingWorldModel, datalo
         current_step = i + steps
         set_to_zero = sorted_parameter_indices[i:i+steps]
         parametric_uncertainty[set_to_zero] = 0
+        current_indices = current_indices - set(set_to_zero)
         flat_params[torch.from_numpy(set_to_zero).unsqueeze(1).to(device)] = 0
         n_eff_params -= steps
         n_eff_params = max(n_eff_params, 0)
-        save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict)
+        save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict, current_indices)
 
     df = pd.DataFrame(results)
     filename = f"data/results/{world_model.model_name}"
@@ -92,23 +99,25 @@ def get_reduced_sloppy_model_baseline_analysis(original_model: AutoencodingWorld
         
         flat_param_dict = flatten_params(world_model)
         flat_params = flat_param_dict["params"]
+        current_indices = set(range(len(flat_params)))
 
         results = []
 
         # Full Model
         n_eff_params = len(flat_params)
         current_step = 0
-        save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict)
+        save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict, current_indices)
         
         # Full Model with tiny weights set to zero
-        set_to_zero = (torch.abs(flat_params) <= 1e-10)
+        set_to_zero = torch.arange(len(flat_params)).to(device)[(torch.abs(flat_params) <= 1e-10).squeeze()]
         flat_params[set_to_zero] = 0
-        n_initial_zero_params = torch.sum(set_to_zero).item()
+        n_initial_zero_params = len(set_to_zero)
 
         n_eff_params -= n_initial_zero_params
         parametric_uncertainty[set_to_zero.squeeze().cpu().numpy()] = 0
+        current_indices = current_indices - set(set_to_zero.squeeze().cpu().numpy())
         current_step = n_initial_zero_params
-        save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict)
+        save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict, current_indices)
         
         # Reducing model
         sorted_parameter_indices = np.argsort(parametric_uncertainty)
@@ -118,10 +127,11 @@ def get_reduced_sloppy_model_baseline_analysis(original_model: AutoencodingWorld
             current_step = i + steps
             set_to_zero = sorted_parameter_indices[i:i+steps]
             parametric_uncertainty[set_to_zero] = 0
+            current_indices = current_indices - set(set_to_zero)
             flat_params[torch.from_numpy(set_to_zero).unsqueeze(1).to(device)] = 0
             n_eff_params -= steps
             n_eff_params = max(n_eff_params, 0)
-            save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict)
+            save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict, current_indices)
 
         all_dfs.append(pd.DataFrame(results))
         
@@ -140,25 +150,27 @@ def get_reduced_sloppy_model_lowest_highest_analysis(original_model: Autoencodin
         
         flat_param_dict = flatten_params(world_model)
         flat_params = flat_param_dict["params"]
+        current_indices = set(range(len(flat_params)))
 
         results = []
         
         # Full Model
         n_eff_params = len(flat_params)
         current_step = 0
-        save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict)
+        save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict, current_indices)
         
         # Full Model with tiny weights set to zero
         abs_flat_params = torch.abs(flat_params)
-        set_to_zero = (abs_flat_params <= 1e-10)
+        set_to_zero = torch.arange(len(flat_params)).to(device)[(torch.abs(flat_params) <= 1e-10).squeeze()]
         flat_params[set_to_zero] = 0
-        n_initial_zero_params = torch.sum(set_to_zero).item()
+        n_initial_zero_params = len(set_to_zero)
         abs_flat_params = abs_flat_params.squeeze().cpu().detach().numpy()
 
         n_eff_params -= n_initial_zero_params
         parametric_uncertainty[set_to_zero.squeeze().cpu().numpy()] = (np.max(abs_flat_params)+1e-10 if not lowest else 0)
+        current_indices = current_indices - set(set_to_zero.squeeze().cpu().numpy())
         current_step = n_initial_zero_params
-        save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict)
+        save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict, current_indices)
         
         # Reducing model
         sorted_parameter_indices = (np.argsort(abs_flat_params) if lowest else np.argsort(-abs_flat_params))
@@ -167,10 +179,11 @@ def get_reduced_sloppy_model_lowest_highest_analysis(original_model: Autoencodin
             current_step = i + steps
             set_to_zero = sorted_parameter_indices[i:i+steps]
             parametric_uncertainty[set_to_zero] = 0
+            current_indices = current_indices - set(set_to_zero)
             flat_params[torch.from_numpy(set_to_zero).unsqueeze(1).to(device)] = 0
             n_eff_params -= steps
             n_eff_params = max(n_eff_params, 0)
-            save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict)
+            save_results(results, world_model, dataloader, flat_params, n_eff_params, current_step, parametric_uncertainty, flat_param_dict, current_indices)
 
         df = pd.DataFrame(results)
         filename = f"data/results/{world_model.model_name}"

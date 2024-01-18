@@ -1,11 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
+# import pandas as pd
 import pickle 
 
 import torch
 
-from train import WorldModel, get_dataloaders, device, UniqueDistshiftDataset, DataLoader, preprocess, postprocess, to_np
+from train import AutoencodingWorldModel, get_dataloaders, device, UniqueDistshiftDataset, DataLoader, preprocess, postprocess, to_np
 
 
 def get_original_test_dataloaders():
@@ -50,39 +50,47 @@ def get_acc(model, dataloader):
 
 
 if __name__=="__main__":
-    categories = ["all", "horizontal", "vertical", "len1", "len2"]
-    test_dataloaders = dict()
-    for category in categories:
-        if category == "all":
-            continue
-        _, test_dataloader = get_dataloaders(category=category, n_seeds=30)
-        test_dataloaders[category] = test_dataloader
+    trials = 10
+    import time
+    
+    total_time = 0
+    for t in range(trials):
+        A = np.random.rand(1000, 1000)
+        A = A + A.T
+        s = time.time()
+        np.linalg.pinv(A, hermitian=True)
+        total_time += time.time() - s
+    print(time.time() - s)
+    
+    total_time = 0
+    for t in range(trials):
+        A = np.random.rand(100, 1000)
+        s = time.time()
+        np.linalg.svd(A, compute_uv=True)
+        total_time += time.time() - s
+    print(time.time() - s)
+    
+    # train_dataloader, test_dataloader = get_dataloaders()
+    
+    # model_data = []
+    
+    # with torch.no_grad():
         
-    test_dataloaders["original"] = get_original_test_dataloaders()
-    
-    model_data = []
-    
-    with torch.no_grad():
-        for category in categories:
-            model = WorldModel(lr=.001, weight_decay=0.00001, hidden_layers=[32, 64, 64], dropout=True, batch_norm=False)
-            model.load_state_dict(torch.load(f"data/models/distshift_{category}.ckpt"))
-            model = model.eval().to(device)
+    #     model = AutoencodingWorldModel(lr=.001, weight_decay=0.00001, hidden_layers=[32, 64, 64], dropout=True, batch_norm=False)
+    #     model.load_state_dict(torch.load(f"data/models/autoencoding.ckpt"))
+    #     model = model.eval().to(device)
+        
+    #     o_acc, t_acc, r_acc = get_acc(model, test_dataloader)
+    #     data = next(iter(test_dataloader))
+    #     s, a, r, t, ns = data
+    #     s, a, r, t, ns = preprocess(s, a, r, t, ns)
+    #     representations = model.get_representations(s, a)
+        
+    #     model_data.append({
+    #         "img_acc": o_acc,
+    #         "reward_acc": r_acc,
+    #         "representation": to_np(representations)
+    #     })
             
-            for test_category, test_dataloader in test_dataloaders.items():
-                o_acc, t_acc, r_acc = get_acc(model, test_dataloader)
-                data = next(iter(test_dataloader))
-                s, a, r, t, ns = data
-                s, a, r, t, ns = preprocess(s, a, r, t, ns)
-                representations = model.get_representations(s, a)
-                
-                model_data.append({
-                    "model": category,
-                    "data": test_category,
-                    "img_acc": o_acc,
-                    "termination_acc": t_acc,
-                    "reward_acc": r_acc,
-                    "representation": to_np(representations)
-                })
-                
-    with open("data/model_data.pickle", 'wb') as handle:
-        pickle.dump(model_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # with open("data/model_data.pickle", 'wb') as handle:
+    #     pickle.dump(model_data, handle, protocol=pickle.HIGHEST_PROTOCOL)

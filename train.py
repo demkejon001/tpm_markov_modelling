@@ -116,10 +116,22 @@ def postprocess(img):
     return np.clip(post_img, 0, 255).astype(int)
 
 
+# def get_dataloaders():
+#     train_dataset = UniqueDistshiftDataset("distshift-v0")
+#     train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, drop_last=True, num_workers=4)
+#     test_dataset = UniqueDistshiftDataset("distshift-v1")
+#     test_dataloader = DataLoader(test_dataset, batch_size=len(test_dataset), shuffle=False, drop_last=False, num_workers=2)
+#     return train_dataloader, test_dataloader
+
+
 def get_dataloaders():
-    train_dataset = UniqueDistshiftDataset("distshift-v0")
+    filenames = [f"distshift-v0", f"distshift-v1"]
+    for i in range(1, 5):
+        filenames.append(f"distshift-horz{i}")
+        filenames.append(f"distshift-vert{i}")
+    train_dataset = UniqueDistshiftDataset(filenames, train=True, rand_mode="state")
     train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, drop_last=True, num_workers=4)
-    test_dataset = UniqueDistshiftDataset("distshift-v1")
+    test_dataset = UniqueDistshiftDataset(filenames, train=False, rand_mode="state")
     test_dataloader = DataLoader(test_dataset, batch_size=len(test_dataset), shuffle=False, drop_last=False, num_workers=2)
     return train_dataloader, test_dataloader
 
@@ -129,6 +141,6 @@ if __name__=="__main__":
                                    hidden_layers=[16, 16, 32], transition_layers=[32],
                                    dropout=False, batch_norm=False).to(device)
     train_dataloader, test_dataloader = get_dataloaders()
-    train(model, train_dataloader, n_minibatches=5000, log_interval=50)
-    # train_and_eval(model, train_dataloader, test_dataloader, n_minibatches=5000, log_interval=100)
-    torch.save(model.state_dict(), f"data/models/{model.model_name}.ckpt")
+    # train(model, train_dataloader, n_minibatches=5000, log_interval=50)
+    train_and_eval(model, train_dataloader, test_dataloader, n_minibatches=50000, log_interval=100)
+    torch.save(model.state_dict(), f"data/models/{model.model_name}_many.ckpt")

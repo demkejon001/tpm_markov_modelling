@@ -92,5 +92,12 @@ class UniqueDistshiftDataset(DistshiftDataset):
 
 
 if __name__=="__main__":    
-    make_unique_dataset(Distshift(shift=False), filename="distshift-v0")
-    make_unique_dataset(Distshift(shift=True), filename="distshift-v1")
+    # make_unique_dataset(Distshift(shift=False), filename="distshift-v0")
+    # make_unique_dataset(Distshift(shift=True), filename="distshift-v1")
+    # for seed in range(1, 5):
+    #     make_unique_dataset(RandomHorizontalLavaDistshift(seed=seed), filename=f"distshift-horz{seed}")
+    #     make_unique_dataset(RandomVerticalLavaDistshift(seed=seed), filename=f"distshift-vert{seed}")
+    seed = 0
+    make_unique_dataset(RandomLength2LavaDistshift(seed=seed, n_lava=3, lava_length=3), filename=f"distshift-rand{seed}")
+    seed = 1
+    make_unique_dataset(RandomLength2LavaDistshift(seed=seed, n_lava=1, lava_length=1), filename=f"distshift-rand{seed}")
